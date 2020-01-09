@@ -67,6 +67,7 @@ Available CONFIGURATION_TYPE:
 
 * storage-to-storage
 * storage-to-table
+* table-to-storage
 
 Note that if you do not specify an output filename, the generated file will be created in the current directory and named : CONFIGURATION_TYPE.json
 
