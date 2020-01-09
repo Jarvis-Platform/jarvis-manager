@@ -24,7 +24,7 @@ import googleapiclient.discovery
 from fd_io_python_libs.fd_io_credentials import fd_io_credentials
 from fd_io_python_libs.fd_io_firebase import fd_io_firebase_admin_sdk
 from fd_io_python_libs.fd_io_users import fd_io_users
-from fd_io_python_libs.fd_io_firestore import fd_io_firestore
+from fd_io_python_libs.fd_io_firestore_v2 import fd_io_firestore
 
 
 # Globals
