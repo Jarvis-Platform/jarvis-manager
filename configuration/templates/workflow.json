@@ -1,0 +1,14 @@
+{
+    "configuration_type": "workflow",
+    "configuration_id":  "a_unique_config_id_of_your_choice",
+    "environment": "DEV",
+    "short_description": "This is a short description of what this workflow orchestrates.",
+    "account": "customer_account_id",
+    "activated": true,
+    "archived": false,
+    "authorized_job_ids": [
+        "a|job|id|abcd",
+        "another|job|id|xyz"
+    ],
+    "target_dag": "id_of_the_dag_that_will_be_triggered"
+}
