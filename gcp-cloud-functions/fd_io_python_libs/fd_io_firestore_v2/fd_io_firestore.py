@@ -265,7 +265,7 @@ def deploy_regular_configuration(resource, gcp_project_id, user_credentials, use
     # Tag the payload with user email and update time
     #
     resource["updated_by"] = user_email
-    resource["updated_date"] = update_time
+    resource["update_date"] = update_time
 
     # Special processing
     #
