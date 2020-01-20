@@ -349,7 +349,14 @@ def deploy_regular_configuration(resource, gcp_project_id, user_credentials, use
 def deploy_configuration(resource, gcp_project_id, uid):
 
     logging.info("Deploying configuration to Firestore, under GCP Project : %s", gcp_project_id)
-    # logging.info(resource)
+
+    # Check if "archived" flags is present
+    # If not we add it and set it to False
+    #
+    try:
+        check_archived = resource["archived"]
+    except KeyError:
+        resource["archived"] = False
 
     # Route to proper configuration deployment processor
     #
