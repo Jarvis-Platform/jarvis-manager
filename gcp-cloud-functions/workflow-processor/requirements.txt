@@ -1,5 +1,6 @@
 # Function dependencies
 #
+google-cloud-pubsub>=1.1.0
 google-cloud-firestore>=1.1.0
 requests-toolbelt>=0.9.1
 Jinja2>=2.10.1

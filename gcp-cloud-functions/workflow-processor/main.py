@@ -1,9 +1,12 @@
 
 from google.cloud import firestore
 from google.cloud import exceptions
-from datetime import datetime, timezone, timedelta
+from google.cloud import pubsub_v1
+
+import datetime
 import dateutil.parser
 import json
+import uuid
 from jinja2 import Template
 
 import google.auth
@@ -146,7 +149,7 @@ def update_workflow_status(doc, job_id, execution_date):
     db = firestore.Client()
     current_status_ref = db.collection(u'workflow-status').document(doc.id)
 
-    date_now = datetime.now().isoformat('T')
+    date_now = datetime.datetime.now().isoformat('T')
 
     current_status = current_status_ref.get().to_dict()
     if current_status is None:
@@ -183,7 +186,7 @@ def process_workflow_conditions(doc, job_id, execution_date):
     db = firestore.Client()
     current_status_ref = db.collection(u'workflow-status').document(doc.id)
 
-    date_now = datetime.now().isoformat('T')
+    date_now = datetime.datetime.now().isoformat('T')
 
     current_status = current_status_ref.get().to_dict()
     if current_status is None:
@@ -231,6 +234,21 @@ def process_workflow_conditions(doc, job_id, execution_date):
     return result
 
 
+def send_dag_trigger_to_pubsub( gcp_project_id, pubsub_topic, dag_id, dag_data):
+
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(gcp_project_id, pubsub_topic)
+
+    payload = {}
+    payload["dag_id"] = dag_id
+    payload["dag_conf"] = dag_data["conf"]
+    payload["dag_run_id"] = datetime.datetime.today().strftime("%Y%m%d-%H%M%S") + "-" + str(uuid.uuid4())
+
+    data = bytes(json.dumps(payload), "utf-8")
+
+    message_future = publisher.publish(topic_path, data=data)
+
+
 def process(event, context):
     """Triggered by a change to a Firestore document.
     Args:
@@ -246,8 +264,8 @@ def process(event, context):
     # If the event is older than an hour, we escape the loop
     #
     event_datetime = dateutil.parser.parse(context.timestamp)
-    delta = datetime.now(timezone.utc) - event_datetime
-    if delta >= timedelta(hours = 1):
+    delta = datetime.datetime.now(datetime.timezone.utc) - event_datetime
+    if delta >= datetime.timedelta(hours = 6):
         print("Event is too old. Exiting ...")
         return True
 
@@ -401,12 +419,20 @@ def process(event, context):
 
         if result is True:
             print("Triggering DAG : " + doc_dict['target_dag'])
-            result = make_iap_request(url,
-                                      client_id,
-                                      method='POST',
-                                      data=json.dumps(dag_parameters))
 
-            print(result)
+            # Send Order to pubsub
+            #
+            send_dag_trigger_to_pubsub( gcp_project_id=composer_configuration['gcp-project-id'],
+                                        pubsub_topic=composer_configuration['pubsub-topic'],
+                                        dag_id=doc_dict['target_dag'].strip(),
+                                        dag_data=dag_parameters)
+
+            # result = make_iap_request(url,
+            #                           client_id,
+            #                           method='POST',
+            #                           data=json.dumps(dag_parameters))
+
+            # print(result)
 
         else:
             print("Conditions are not met. Exiting...")
