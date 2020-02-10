@@ -94,7 +94,7 @@ def get_user_accounts(user_id):
         return None
 
 
-def send_dag_trigger_to_pubsub(gcp_project_id, pubsub_topic, dag_id, dag_data):
+def send_dag_trigger_to_pubsub(gcp_project_id, pubsub_topic, dag_id, dag_data, dag_execution_date):
 
     publisher = pubsub_v1.PublisherClient()
     topic_path = publisher.topic_path(gcp_project_id, pubsub_topic)
@@ -104,25 +104,15 @@ def send_dag_trigger_to_pubsub(gcp_project_id, pubsub_topic, dag_id, dag_data):
     payload["dag_conf"]     = dag_data
     payload["dag_run_id"]   = datetime.datetime.today().strftime("%Y%m%d-%H%M%S") + "-" + str(uuid.uuid4())
 
+    if dag_execution_date is not None:
+        payload["dag_execution_date"] = dag_execution_date
+
     data = bytes(json.dumps(payload), "utf-8")
 
     message_future = publisher.publish(topic_path, data=data)
 
 
 def process_post_request(request_dict, user_id):
-
-    # First, let's check if we have the right data in the request
-    #
-    # request_dict["data"]["dagId"].stri
-    if "dagId" not in request_dict["data"]:
-        message = "Request is missing an attribute : dagId"
-        print(message)
-        return({"data": message}, 400)
-
-    if "dagConf" not in request_dict["data"]:
-        message = "Request is missing an attribute : dagConf"
-        print(message)
-        return({"data": message}, 400)
 
     # Let's check if the user requesting the logs has access to the DAGs run account
     #
@@ -137,15 +127,33 @@ def process_post_request(request_dict, user_id):
         print(message)
         return({"data": message}, 403)
 
+    # Then, let's check if we have the right data in the request
+    #
+    # dagId and dagConf are MANDATORY
+    # dagExecutionDate is optional
+    #
+    if "dagId" not in request_dict["data"]:
+        message = "Request is missing an attribute : dagId"
+        print(message)
+        return({"data": message}, 400)
+
+    if "dagConf" not in request_dict["data"]:
+        message = "Request is missing an attribute : dagConf"
+        print(message)
+        return({"data": message}, 400)
+
+    if "dagExecutionDate" not in request_dict["data"]:
+        request_dict["data"]["dagExecutionDate"] = None
+
     # Send to PubSub
     #
-
     try:
 
         send_dag_trigger_to_pubsub( gcp_project_id=PS_COMPOSER_DAG_TRIGGER_GCP_PROJECT_ID,
                                     pubsub_topic=PS_COMPOSER_DAG_TRIGGER_TOPIC,
                                     dag_id=request_dict["data"]["dagId"].strip(),
-                                    dag_data=request_dict["data"]["dagConf"])
+                                    dag_data=request_dict["data"]["dagConf"],
+                                    dag_execution_date=request_dict["data"]["dagExecutionDate"])
 
         return({"data": "DAG {} set to be triggered.".format(request_dict["data"]["dagId"].strip())}, 200)
 
