@@ -86,12 +86,13 @@ GCP_CF_TYPES = {
         "help": JARVIS_DEPLOY_GCP_CF_PREFIX + " storage-to-dag CLOUD_FUNCTION_NAME BUCKET_NAME DIRECTORY_FILTER DAG_TO_TRIGGER CONFIGURATION_ID",
         "command": GCLOUD_COMMAND + """ functions deploy {CLOUD_FUNCTION_NAME} \
 --source """ + SOURCE_REPOSITORY_PREFIX + """cloud-functions/storage-to-dag \
---region=europe-west1 --entry-point=process --retry --runtime=python37 --allow-unauthenticated \
+--region=europe-west1 --entry-point=process_send_trigger_to_pubsub --retry --runtime=python37 --allow-unauthenticated \
 --trigger-event=google.storage.object.finalize --trigger-resource={BUCKET_NAME} \
 --set-env-vars DIRECTORY_FILTER={DIRECTORY_FILTER} \
 --set-env-vars DAG_TO_TRIGGER={DAG_TO_TRIGGER} \
 --set-env-vars CONFIGURATION_ID={CONFIGURATION_ID} \
---set-env-vars FIRESTORE_PROJECT_ID={FIRESTORE_PROJECT_ID} \
+--set-env-vars COMPOSER_DAG_TRIGGER_PUBSUB_GCP_PROJECT={COMPOSER_DAG_TRIGGER_PUBSUB_GCP_PROJECT} \
+--set-env-vars COMPOSER_DAG_TRIGGER_PUBSUB_TOPIC={COMPOSER_DAG_TRIGGER_PUBSUB_TOPIC} \
 --set-env-vars PROJECT_ID={GCP_PROJECT_ID} --project={GCP_PROJECT_ID} --account={GCP_ACCOUNT}"""
     }
 }
@@ -234,7 +235,12 @@ def get_ssh_client(ipaddress):
     return client
 
 
-def build_command_deploy_gcp_cf(resource, gcp_project_id=None, gcp_account=None, firestore_project_id=None):
+def build_command_deploy_gcp_cf(resource=None,
+                                gcp_project_id=None,
+                                gcp_account=None,
+                                firestore_project_id=None,
+                                composer_dag_trigger_pubsub_gcp_project=None,
+                                composer_dag_trigger_pubsub_topic=None):
 
     if resource is not None:
 
@@ -272,7 +278,8 @@ def build_command_deploy_gcp_cf(resource, gcp_project_id=None, gcp_account=None,
                                                                             DIRECTORY_FILTER=resource[3],
                                                                             DAG_TO_TRIGGER=resource[4],
                                                                             CONFIGURATION_ID=resource[5],
-                                                                            FIRESTORE_PROJECT_ID=firestore_project_id,
+                                                                            COMPOSER_DAG_TRIGGER_PUBSUB_GCP_PROJECT=composer_dag_trigger_pubsub_gcp_project,
+                                                                            COMPOSER_DAG_TRIGGER_PUBSUB_TOPIC=composer_dag_trigger_pubsub_topic,
                                                                             GCP_ACCOUNT=gcp_account,
                                                                             GCP_PROJECT_ID=gcp_project_id)
                 elif resource[0] in ["gcs-to-storage"]:
@@ -283,6 +290,7 @@ def build_command_deploy_gcp_cf(resource, gcp_project_id=None, gcp_account=None,
                                                                             FIRESTORE_PROJECT_ID=firestore_project_id,
                                                                             GCP_ACCOUNT=gcp_account,
                                                                             GCP_PROJECT_ID=gcp_project_id)
+
                 else:
 
                     # GCP CF type unknown
@@ -312,11 +320,6 @@ def deploy_gcp_cf(resource, project_profile, uid):
     # Get GCP Project ID from project profile
     #
     gcp_project_id = fd_io_firestore.get_gcp_project_id_from_project_profile(
-        project_profile)
-
-    # Get Firestore Project ID from project profile
-    #
-    firestore_project_id = fd_io_firestore.get_firestore_project_id_from_project_profile(
         project_profile)
 
     # Get user email
@@ -350,11 +353,28 @@ def deploy_gcp_cf(resource, project_profile, uid):
 
     logging.info("GCP Account retrieved : {}".format(gcp_account))
 
+    # Get Firestore Project ID from project profile
+    #
+    firestore_project_id = fd_io_firestore.get_firestore_project_id_from_project_profile(
+        project_profile)
+
+    # Get Composer DAG Trigger info
+    #
+    composer_dag_trigger_pubsub_gcp_project = fd_io_firestore.get_composer_dag_trigger_pubsub_gcp_project_from_project_profile(project_profile)
+    composer_dag_trigger_pubsub_topic = fd_io_firestore.get_composer_dag_trigger_pubsub_topic_from_project_profile(project_profile)
+
+
     # Build gcloud deploy command according to the "cf type" which should be the first argument
     # passed in the resource item
     #
+    # resource=None, gcp_project_id=None, gcp_account=None, firestore_project_id=None
     deploy_gcp_cf_command, message = build_command_deploy_gcp_cf(
-        resource, gcp_project_id, gcp_account, firestore_project_id)
+                                        resource=resource,
+                                        gcp_project_id=gcp_project_id,
+                                        gcp_account=gcp_account,
+                                        firestore_project_id=firestore_project_id,
+                                        composer_dag_trigger_pubsub_gcp_project=composer_dag_trigger_pubsub_gcp_project,
+                                        composer_dag_trigger_pubsub_topic=composer_dag_trigger_pubsub_topic)
 
     if deploy_gcp_cf_command is None:
         return False, message

@@ -104,6 +104,45 @@ def get_composer_gcp_project_id_from_project_profile(project_profile):
         return None
 
 
+
+def get_composer_dag_trigger_pubsub_gcp_project_from_project_profile(project_profile):
+
+    # Retrieve project profile
+    #
+    profile = get_project_profile_from_id(project_profile)
+
+    if profile is None:
+        return None
+
+    # Parse the profile to get the composer_dag_trigger_pubsub_gcp_project
+    #
+    try:
+        return profile["composer_dag_trigger_pubsub_gcp_project"]
+
+    except KeyError as ex:
+        print("Cannot retrieve Composer DAG Trigger PubSub GCP Project from profile : {}".format(project_profile))
+        return None
+
+
+def get_composer_dag_trigger_pubsub_topic_from_project_profile(project_profile):
+
+    # Retrieve project profile
+    #
+    profile = get_project_profile_from_id(project_profile)
+
+    if profile is None:
+        return None
+
+    # Parse the profile to get the composer_dag_trigger_pubsub_topic
+    #
+    try:
+        return profile["composer_dag_trigger_pubsub_topic"]
+
+    except KeyError as ex:
+        print("Cannot retrieve Composer DAG Trigger PubSub Topic from profile : {}".format(project_profile))
+        return None
+
+
 def get_firestore_project_id_from_project_profile(project_profile):
 
     # Retrieve project profile
