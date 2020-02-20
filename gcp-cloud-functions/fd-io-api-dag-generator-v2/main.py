@@ -25,6 +25,26 @@ Usage: jarvis dag-generator TABLE-TO-TABLE.json
     }
 
 
+def check_dag_exists(dag_filename, project_profile):
+
+    # Some info
+    #
+    print("DAG filename    : {}".format(dag_filename))
+    print("Project profile : {}".format(project_profile))
+
+    # Get GCP Project ID of the Composer Instance from project profile
+    #
+    composer_gcp_project_id = fd_io_firestore.get_composer_gcp_project_id_from_project_profile(project_profile)
+
+    # Get Composer Bucket from project profile
+    #
+    gcp_composer_bucket = fd_io_firestore.get_composer_bucket_from_project_profile(project_profile)
+
+    dag_filename_full_path = "dags/" + dag_filename.strip()
+
+    return fd_io_gcp_storage.check_file_exists(dag_filename_full_path, composer_gcp_project_id, gcp_composer_bucket)
+
+
 def process_post_request(request_dict):
 
     try:
@@ -45,11 +65,28 @@ def process_put_request(request_dict):
     data = {}
 
     try:
+
+        # Retrieve resource
+        #
         resource = request_dict["payload"]["resource"]
-        project_profile = request_dict["payload"]["project_profile"]
+        project_profile = request_dict["payload"]["project_profile"]     
+        dag_filename = request_dict["payload"]["dag_file"]["name"]
+
+        # Process DAG file checking
+        #
+        if resource == "check_dag_exists":
+
+            dag_file_exists = check_dag_exists(dag_filename=dag_filename, project_profile=project_profile)
+
+            if dag_file_exists is True:
+                return {"message":"DAG file already exists in Composer bucket."}, 200
+            else:
+                return {"message":"DAG file NOT FOUND in Composer bucket."}, 404
+
+
         uid = request_dict["payload"]["uid"]
         dag_data = request_dict["payload"]["dag_file"]["data"]
-        dag_filename = request_dict["payload"]["dag_file"]["name"]
+        
 
         # Get GCP Project ID of the Composer Instance from project profile
         #
