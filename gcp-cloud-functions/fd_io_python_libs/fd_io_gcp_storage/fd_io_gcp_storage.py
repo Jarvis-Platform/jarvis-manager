@@ -46,10 +46,6 @@ def upload_to_gcs_from_file(dag_data, dag_filename, gcp_project_id, gcp_composer
             logging.info("Error while retting SA credentials.")
             return False, "Error while handling SA credentials."
 
-        # Get user email
-        #
-        user_email = fd_io_firebase_admin_sdk.get_firebase_user_email(uid)
-
         # Write DAG data to GCS
         #
         client = storage.Client(project=gcp_project_id, credentials=sa_credentials)
@@ -63,3 +59,31 @@ def upload_to_gcs_from_file(dag_data, dag_filename, gcp_project_id, gcp_composer
         message = "Error while parsing resource : %s" % ex
         print(message)
         return False, message
+
+
+def check_file_exists(dag_filename_full_path, gcp_project_id, gcp_composer_bucket):
+
+    logging.info("Checking for DAG file existence : {}/{}".format(gcp_composer_bucket, dag_filename_full_path))
+
+    # Route to proper configuration deployment processor
+    #
+    try:
+        
+        # Get credentials
+        #
+        sa_credentials = fd_io_credentials.get_gcp_service_account_credentials(gcp_project_id)
+        if sa_credentials is None :
+            logging.info("Error while retting SA credentials.")
+            return False
+
+        # Write DAG data to GCS
+        #
+        client = storage.Client(project=gcp_project_id, credentials=sa_credentials)
+        bucket = client.get_bucket(gcp_composer_bucket)
+
+        return isinstance(bucket.get_blob(dag_filename_full_path), storage.Blob)
+
+    except Exception as ex:
+        logging.info("Error while checking for DAG file existence : {}/{}".format(gcp_composer_bucket, dag_filename_full_path))
+        logging.info(ex)
+        return False
