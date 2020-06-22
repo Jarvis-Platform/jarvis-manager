@@ -110,7 +110,7 @@ def process_put_request(request_dict):
 
         # Uploading configuration
         #
-        ret_code, message = fd_io_firestore.deploy_configuration(unpickled_resource, composer_gcp_project_id, uid)
+        ret_code, message = fd_io_firestore.deploy_configuration(unpickled_resource, composer_gcp_project_id, uid, project_profile)
 
         if ret_code is not True:
             data["message"] = message

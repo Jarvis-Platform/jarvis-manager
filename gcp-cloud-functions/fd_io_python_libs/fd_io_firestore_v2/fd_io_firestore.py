@@ -181,6 +181,22 @@ def get_composer_bucket_from_project_profile(project_profile):
         return None
 
 
+def get_user_customer_accounts(user_email):
+
+    # Instantiate Firestore Python Client
+    #
+    db = firestore.Client()
+
+    # Get profile with given ID
+    #
+    try:
+        return ((db.collection("user-permissions").document(user_email.strip()).get()).to_dict())["customer_accounts"]
+
+    except Exception as ex:
+        print("Error while retrieving Customer Accounts for user : {}\n{}".format(user_email.strip(), ex))
+        return None
+
+
 def get_project_profile(accounts):
 
     # Instantiate Firestore Python Client
@@ -385,7 +401,7 @@ def deploy_regular_configuration(resource, gcp_project_id, user_credentials, use
         return False, ex
 
 
-def deploy_configuration(resource, gcp_project_id, uid):
+def deploy_configuration(resource, gcp_project_id, uid, project_profile):
 
     logging.info("Deploying configuration to Firestore, under GCP Project : %s", gcp_project_id)
 
@@ -416,7 +432,39 @@ def deploy_configuration(resource, gcp_project_id, uid):
         permissions_to_check = [fd_io_users.GCP_WRITER]
         if fd_io_users.gcp_check_permission(user_email, gcp_project_id, "firestore", permissions_to_check) is False:
             return False, "Not enough permission to write configuration to Firestore."
-        
+
+
+        # Check Customer Account integrity and access
+        #
+        try:
+
+            project_profile_dict = get_project_profile_from_id(project_profile)
+            project_account = project_profile_dict["account"].strip()
+
+            conf_account = resource["account"].strip()
+
+            logging.info("Destination project account : {}".format(project_account))
+            logging.info("Configuration account : {}".format(conf_account))
+
+            # Check if both accounts are the same
+            #
+            if project_account != conf_account:
+                return False, "The configuration account ({}) is different from the destination project account ({}).\nPlease check your configuration or the destination project requested.".format(conf_account, project_account)
+
+            # Check if the user has access to the Customer Account
+            #
+            users_cutomer_accounts = get_user_customer_accounts(user_email)
+
+            logging.info("Customer Accounts : {}".format(users_cutomer_accounts))
+
+            if (users_cutomer_accounts is None) or (project_account not in users_cutomer_accounts.keys()) or (users_cutomer_accounts[project_account].strip() != "user"):
+                return False, "You do not have access to this Customer Account : {}".format(project_account)
+
+
+        except Exception as ex:
+            return False, "An error ocurred while checking configuration account : \n{}".format(ex)
+
+
         # Get credentials
         #
         sa_credentials = fd_io_credentials.get_gcp_service_account_credentials(gcp_project_id)

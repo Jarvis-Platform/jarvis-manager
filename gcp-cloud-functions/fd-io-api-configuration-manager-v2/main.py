@@ -190,7 +190,7 @@ def process_put_request(request_dict):
     try:
         resource = request_dict["payload"]["resource"]
         project_profile = request_dict["payload"]["project_profile"]
-        uid = request_dict["payload"]["uid"]
+        uid = request_dict["payload"]["uid"].strip()
         deploy_cf = request_dict["payload"]["deploy_cf"]
 
         # Get Firestore Project ID.
@@ -199,18 +199,20 @@ def process_put_request(request_dict):
         firestore_project_id = fd_io_firestore.get_firestore_project_id_from_project_profile(
             project_profile)
 
+
         # Deploy
         #
         # resource_copy = copy.deepcopy(resource)
         #
-        ret_code, message = fd_io_firestore.deploy_configuration(
-            resource, firestore_project_id, uid)
+        ret_code, message = fd_io_firestore.deploy_configuration(resource, firestore_project_id, uid, project_profile)
 
         if ret_code is True:
             data["message"] = "Configuration deployed."
             http_status = 200
         else:
-            return data["message"], 500
+            logging.info("Error while deploying configuration.\nMessage : {}".format(message))
+            data["message"] = message
+            return data, 500
 
         # Do we need to deploy any associated CF
         #
