@@ -5,6 +5,8 @@ import pickle
 import base64
 import httplib2
 
+from semver import compare
+
 from google.cloud import storage
 from google.oauth2 import service_account
 from google.auth import transport
@@ -86,6 +88,36 @@ def process_put_request(request_dict):
 
         uid = request_dict["payload"]["uid"]
         dag_data = request_dict["payload"]["dag_file"]["data"]
+
+        enable_python_script_processing = False
+
+        # Verifying Client Version
+        #
+        try:
+            client_type = request_dict["payload"]["client_type"]
+            client_version = (request_dict["payload"]["client_version"]).strip()
+
+            print("Client Type : {}".format(client_type))
+            print("Client Version : {}".format(client_version))
+
+            # TODO
+            #
+            enable_python_script_processing = True
+
+            # TODO
+            #
+            # if compare(client_version, "1.1.6") < 0:
+
+            #     print("Outdated version of client ...")
+            #     data["message"] = "Your version of Jarvis SDK is outdated.\nPlease upgrade using pip : pip3 install jarvis-sdk --upgrade"
+            #     http_status = 500
+            #     return data, http_status
+
+
+        except KeyError:
+
+            print("Client Type / Version not found. Probably Jarvis SDK < 1.1.5")
+
         
 
         # Get GCP Project ID of the Composer Instance from project profile
@@ -95,6 +127,10 @@ def process_put_request(request_dict):
         # Get Composer Bucket from project profile
         #
         gcp_composer_bucket = fd_io_firestore.get_composer_bucket_from_project_profile(project_profile)
+
+        # Get DAG Bucket from project profile
+        #
+        dag_bucket = fd_io_firestore.get_dag_bucket_from_project_profile(project_profile)
 
         # Decode resource : configuration associated with the DAG
         #
@@ -108,18 +144,44 @@ def process_put_request(request_dict):
         decoded_dag_data = base64.b64decode(decoded_dag_data)
         unpickled_dag_data = pickle.loads(decoded_dag_data)
 
-        # Uploading configuration
+        # Uploading DAG file to COMPOSER Storage
         #
-        ret_code, message = fd_io_firestore.deploy_configuration(unpickled_resource, composer_gcp_project_id, uid)
+        ret_code, message = fd_io_gcp_storage.upload_to_gcs_from_file(unpickled_dag_data,"dags/" + dag_filename, composer_gcp_project_id, gcp_composer_bucket, uid)
 
         if ret_code is not True:
             data["message"] = message
             http_status = 500
             return data, http_status
 
-        # Uploading DAG file
+        if enable_python_script_processing is True:
+
+            # Decode data : will be uploaded as PY file to the bucket
+            #
+            decoded_dag_data = bytes(request_dict["payload"]["python_script"]["data"], "utf-8")
+            decoded_dag_data = base64.b64decode(decoded_dag_data)
+            unpickled_dag_data = pickle.loads(decoded_dag_data)
+
+            # Uploading DAG file to Jarvis Platform
+            #
+            dag_script_path = "dags/TTT/" + request_dict["payload"]["python_script"]["name"]
+            ret_code, message = fd_io_gcp_storage.upload_to_gcs_from_file(unpickled_dag_data, dag_script_path, composer_gcp_project_id, dag_bucket, uid)
+
+            if ret_code is not True:
+                data["message"] = message
+                http_status = 500
+                return data, http_status
+
+            # Updating configuration with DAG Script info
+            #
+            dag_script_data = {}
+            dag_script_data["storage_type"] = "gcs"
+            dag_script_data["bucket"] = dag_bucket
+            dag_script_data["filename"] = dag_script_path
+            unpickled_resource["dag_script"] = dag_script_data
+
+        # Uploading configuration
         #
-        ret_code, message = fd_io_gcp_storage.upload_to_gcs_from_file(unpickled_dag_data,"dags/" + dag_filename, composer_gcp_project_id, gcp_composer_bucket, uid)
+        ret_code, message = fd_io_firestore.deploy_configuration(resource=unpickled_resource, gcp_project_id=composer_gcp_project_id, uid=uid)
 
         if ret_code is not True:
             data["message"] = message
@@ -166,7 +228,7 @@ def process(request):
         http_method = request.method.strip()
         request_dict = request.get_json()
 
-        current_object = request._get_current_object()
+        # current_object = request._get_current_object()
 
     except Exception as ex:
 

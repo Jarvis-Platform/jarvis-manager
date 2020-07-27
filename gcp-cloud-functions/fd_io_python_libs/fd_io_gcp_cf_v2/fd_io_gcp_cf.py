@@ -43,7 +43,7 @@ SOURCE_REPOSITORY_PREFIX = "https://source.developers.google.com/projects/fd-jar
 
 JARVIS_DEPLOY_GCP_CF_PREFIX = "jarvis [--gcp-project-id PROJECT-ID] deploy gcp-cloud-function"
 
-SUPPORTED_CONFIGURATION_TYPES = ["storage-to-storage", "storage-to-table", "storage-to-tables"]
+SUPPORTED_CONFIGURATION_TYPES = ["storage-to-storage", "storage-to-table", "storage-to-tables", "vm-launcher"]
 
 GCP_CF_TYPES = {
     "gcs-to-storage": {
@@ -93,6 +93,36 @@ GCP_CF_TYPES = {
 --set-env-vars CONFIGURATION_ID={CONFIGURATION_ID} \
 --set-env-vars COMPOSER_DAG_TRIGGER_PUBSUB_GCP_PROJECT={COMPOSER_DAG_TRIGGER_PUBSUB_GCP_PROJECT} \
 --set-env-vars COMPOSER_DAG_TRIGGER_PUBSUB_TOPIC={COMPOSER_DAG_TRIGGER_PUBSUB_TOPIC} \
+--set-env-vars PROJECT_ID={GCP_PROJECT_ID} --project={GCP_PROJECT_ID} --account={GCP_ACCOUNT}"""
+    },
+    "storage-to-storage-cf-edition": {
+        "num_arguments": 6,
+        "help": JARVIS_DEPLOY_GCP_CF_PREFIX + " storage-to-storage-cf-edition CLOUD_FUNCTION_NAME BUCKET_NAME DIRECTORY_FILTER DAG_TO_TRIGGER CONFIGURATION_ID",
+        "command": GCLOUD_COMMAND + """ functions deploy {CLOUD_FUNCTION_NAME} \
+--source """ + SOURCE_REPOSITORY_PREFIX + """cloud-functions/storage-to-storage-cf-edition \
+--region=europe-west1 --entry-point=process --retry --runtime=python37 --allow-unauthenticated --memory=1024 --timeout=540 \
+--trigger-event=google.storage.object.finalize --trigger-resource={BUCKET_NAME} \
+--set-env-vars DIRECTORY_FILTER={DIRECTORY_FILTER} \
+--set-env-vars DAG_TO_TRIGGER={DAG_TO_TRIGGER} \
+--set-env-vars CONFIGURATION_ID={CONFIGURATION_ID} \
+--set-env-vars FIRESTORE_PROJECT_ID={FIRESTORE_PROJECT_ID} \
+--set-env-vars PUBSUB_PROJECT_ID={PUBSUB_PROJECT_ID} \
+--max-instances={CF_MAX_INSTANCES} \
+--set-env-vars PROJECT_ID={GCP_PROJECT_ID} --project={GCP_PROJECT_ID} --account={GCP_ACCOUNT}"""
+    },
+    "storage-to-tables-cf-edition": {
+        "num_arguments": 6,
+        "help": JARVIS_DEPLOY_GCP_CF_PREFIX + " storage-to-tables-cf-edition CLOUD_FUNCTION_NAME BUCKET_NAME DIRECTORY_FILTER DAG_TO_TRIGGER CONFIGURATION_ID",
+        "command": GCLOUD_COMMAND + """ functions deploy {CLOUD_FUNCTION_NAME} \
+--source """ + SOURCE_REPOSITORY_PREFIX + """cloud-functions/storage-to-tables-cf-edition \
+--region=europe-west1 --entry-point=process --retry --runtime=python37 --allow-unauthenticated --timeout=540 \
+--trigger-event=google.storage.object.finalize --trigger-resource={BUCKET_NAME} \
+--set-env-vars DIRECTORY_FILTER={DIRECTORY_FILTER} \
+--set-env-vars DAG_TO_TRIGGER={DAG_TO_TRIGGER} \
+--set-env-vars CONFIGURATION_ID={CONFIGURATION_ID} \
+--set-env-vars FIRESTORE_PROJECT_ID={FIRESTORE_PROJECT_ID} \
+--set-env-vars PUBSUB_PROJECT_ID={PUBSUB_PROJECT_ID} \
+--max-instances={CF_MAX_INSTANCES} \
 --set-env-vars PROJECT_ID={GCP_PROJECT_ID} --project={GCP_PROJECT_ID} --account={GCP_ACCOUNT}"""
     }
 }
@@ -145,6 +175,62 @@ def get_infos_for_cf_deployment(configuration):
                     else:
                         cf_name = configuration["source"]["gcs_source_bucket"] + "-" + cf_suffix + "-to-bigquery"
 
+                # TODO
+                # Hack for the STS Cloud Function edition
+                #
+                if configuration["configuration_type"] == "storage-to-storage":
+                    if len(configuration["destinations"]) >= 1:
+                        if (configuration["destinations"][0])["type"] == "gcs":
+
+                            logging.info("STS CF EDITION HACK")
+
+                            payload = {
+                                "cf_type" : "storage-to-storage-cf-edition",
+                                "cf_name" : cf_name,
+                                "bucket_name" : configuration["source"]["gcs_source_bucket"],
+                                "directory_filter" : configuration["source"]["gcs_source_prefix"].rstrip("/"),
+                                "configuration_type" : configuration["configuration_type"],
+                                "configuration_id" : configuration["configuration_id"]
+                            }
+
+                            # Retrieve optional "CF Max Instances" from configuration
+                            #
+                            try:
+                                payload["cf_max_instances"] = configuration["max_active_runs"]
+                            except Exception:
+                                payload["cf_max_instances"] = 5
+
+                            return True, payload
+
+                # Hack for the STT Cloud Function edition
+                #
+                elif configuration["configuration_type"] == "storage-to-tables":
+                    if len(configuration["destinations"]) >= 1:
+                        if (configuration["destinations"][0])["type"] == "bigquery":
+
+                            logging.info("STT CF EDITION HACK")
+
+                            payload = {
+                                "cf_type" : "storage-to-tables-cf-edition",
+                                "cf_name" : cf_name,
+                                "bucket_name" : configuration["source"]["gcs_source_bucket"],
+                                "directory_filter" : configuration["source"]["gcs_source_prefix"].rstrip("/"),
+                                "configuration_type" : configuration["configuration_type"],
+                                "configuration_id" : configuration["configuration_id"]
+                            }
+
+                            # Retrieve optional "CF Max Instances" from configuration
+                            #
+                            try:
+                                payload["cf_max_instances"] = configuration["max_active_runs"]
+                            except Exception:
+                                payload["cf_max_instances"] = 1
+
+                            return True, payload
+
+                # Normal path
+                #
+                logging.info("Deploy through generic path ...")
                 return True, [
                     "storage-to-dag",
                     cf_name,
@@ -153,6 +239,7 @@ def get_infos_for_cf_deployment(configuration):
                     configuration["configuration_type"],
                     configuration["configuration_id"]
                 ]
+
             else:
 
                 return True, None
@@ -176,6 +263,29 @@ def get_infos_for_cf_deployment(configuration):
                     configuration["gcs_bucket"],
                     configuration["gcs_prefix"].rstrip("/")
             ]
+
+        # Handling VM Launcher
+        #
+        # Will work for PGP only
+        #
+        elif configuration["configuration_type"] == "vm-launcher":
+        
+            logging.info("Special processing vm-launcher type deployment...")
+
+            if "pgp_mode" in configuration.keys():
+
+                cf_name = "cf-" + configuration["configuration_id"]
+
+                return True, [
+                        "storage-to-dag",
+                        cf_name,
+                        configuration["gcs_source_bucket"],
+                        configuration["gcs_source_prefix"].rstrip("/"),
+                        "storage-to-pgp",
+                        configuration["configuration_id"]
+                    ]
+            
+            logging.info("This VM LAUNCHER configuration is not supported.")
 
     except Exception as ex:
         logging.info(
@@ -247,6 +357,46 @@ def build_command_deploy_gcp_cf(resource=None,
         if len(resource) >= 1:
 
             try:
+                # TODO
+                # New approach
+                #
+                try:
+                    cf_type = resource["cf_type"]
+
+                    if cf_type in ["storage-to-storage-cf-edition"]:
+                        command = (GCP_CF_TYPES[cf_type]["command"]).format(CLOUD_FUNCTION_NAME=resource["cf_name"],
+                                                                            BUCKET_NAME=resource["bucket_name"],
+                                                                            DIRECTORY_FILTER=resource["directory_filter"],
+                                                                            DAG_TO_TRIGGER=resource["configuration_type"],
+                                                                            CONFIGURATION_ID=resource["configuration_id"],
+                                                                            CF_MAX_INSTANCES=resource["cf_max_instances"],
+                                                                            FIRESTORE_PROJECT_ID=firestore_project_id,
+                                                                            PUBSUB_PROJECT_ID=composer_dag_trigger_pubsub_gcp_project,
+                                                                            GCP_ACCOUNT=gcp_account,
+                                                                            GCP_PROJECT_ID=gcp_project_id)
+                    elif cf_type in ["storage-to-tables-cf-edition"]:
+                        command = (GCP_CF_TYPES[cf_type]["command"]).format(CLOUD_FUNCTION_NAME=resource["cf_name"],
+                                                                            BUCKET_NAME=resource["bucket_name"],
+                                                                            DIRECTORY_FILTER=resource["directory_filter"],
+                                                                            DAG_TO_TRIGGER=resource["configuration_type"],
+                                                                            CONFIGURATION_ID=resource["configuration_id"],
+                                                                            CF_MAX_INSTANCES=resource["cf_max_instances"],
+                                                                            FIRESTORE_PROJECT_ID=firestore_project_id,
+                                                                            PUBSUB_PROJECT_ID=composer_dag_trigger_pubsub_gcp_project,
+                                                                            GCP_ACCOUNT=gcp_account,
+                                                                            GCP_PROJECT_ID=gcp_project_id)
+
+                    else:
+
+                        # GCP CF type unknown
+                        #
+                        return None, "GCP CF type \"{}\" unknown.".format(resource[0])
+
+                    return command, "ok"
+
+                except Exception:
+                    logging.info("Falling back to OLD fashion deployment ...")
+                
                 # Check if we have a known GCP CF type
                 #
                 if resource[0] not in GCP_CF_TYPES.keys():
@@ -263,6 +413,10 @@ def build_command_deploy_gcp_cf(resource=None,
                     logging.info(message)
                     return None, message
 
+
+                # TODO
+                # Old way
+                #
                 # Assign values to the command according to its type
                 #
                 if resource[0] in ["gcs-to-gcs", "gcs-to-gbq"]:

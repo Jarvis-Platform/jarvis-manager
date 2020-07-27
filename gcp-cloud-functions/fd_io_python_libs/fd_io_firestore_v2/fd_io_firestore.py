@@ -176,8 +176,27 @@ def get_composer_bucket_from_project_profile(project_profile):
     try:
         return profile["composer_bucket"]
 
-    except KeyError as ex:
+    except KeyError:
         print("Cannot retrieve Composer Bucket from profile : {}".format(project_profile))
+        return None
+
+
+def get_dag_bucket_from_project_profile(project_profile):
+
+    # Retrieve project profile
+    #
+    profile = get_project_profile_from_id(project_profile)
+
+    if profile is None:
+        return None
+
+    # Parse the profile to get the Dag Bucket
+    #
+    try:
+        return profile["dag_bucket"]
+
+    except KeyError:
+        print("Cannot retrieve Dag Bucket from profile : {}".format(project_profile))
         return None
 
 

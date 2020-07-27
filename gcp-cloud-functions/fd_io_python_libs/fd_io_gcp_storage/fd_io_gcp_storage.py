@@ -22,7 +22,7 @@ from fd_io_python_libs.fd_io_users import fd_io_users
 
 def upload_to_gcs_from_file(dag_data, dag_filename, gcp_project_id, gcp_composer_bucket, uid):
 
-    logging.info("Deploying DAG file to Composer bucket , under GCP Project : %s", gcp_project_id)
+    logging.info("Uploading gs://{}/{}".format(gcp_composer_bucket, dag_filename))
 
     # Route to proper configuration deployment processor
     #
@@ -31,7 +31,7 @@ def upload_to_gcs_from_file(dag_data, dag_filename, gcp_project_id, gcp_composer
         # Get user email
         #
         user_email = fd_io_firebase_admin_sdk.get_firebase_user_email(uid)
-        logging.info("Deploy configuration, email used : {}".format(user_email))
+        logging.info("Upload file to GCS, email used : {}".format(user_email))
 
         # Check user permission
         #
@@ -53,7 +53,7 @@ def upload_to_gcs_from_file(dag_data, dag_filename, gcp_project_id, gcp_composer
         blob = storage.Blob(dag_filename, bucket)
         blob.upload_from_string(dag_data)
 
-        return True, "DAG file deployed successfully to Bucket."
+        return True, "File uploaded to bucket successfully."
 
     except Exception as ex:
         message = "Error while parsing resource : %s" % ex
